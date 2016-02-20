@@ -20,9 +20,9 @@ class ID3
     @dataset_properties = dataset_properties
 
     read_csv(dataset_properties[:dataset_path])
+    substitute_missing_values
     find_all_attr_values
     shuffle_examples dataset_properties[:dataset_name]
-    substitute_missing_values
     disp_data
     decision_tree_construction
     print_tree
@@ -46,6 +46,7 @@ class ID3
 
   def print_tree
     level = 1
+    puts "node   " + str_distribution(@tree.examples)
     print_branch(@tree,level)
   end
 
@@ -120,6 +121,14 @@ class ID3
 
     this_attr_index = best_attr_index examples,remaining_attr_index # returns the index of attr with most information gain
     tree.attr_index = this_attr_index
+
+    id3_discrete_sub_proc this_attr_index,tree,examples,remaining_attr_index
+
+    tree
+  end
+
+
+  def id3_discrete_sub_proc(this_attr_index,tree,examples,remaining_attr_index)
     @attr_values[this_attr_index].each do |item|
       tree.conditions << item
       subset = find_subset_with_attr_value this_attr_index,item,examples
@@ -137,8 +146,6 @@ class ID3
         tree.children << id3_proc(subset,remaining_attr_index_new)
       end
     end
-
-    tree
   end
 
 
@@ -247,7 +254,7 @@ class ID3
     end
 
     tree.conditions.each_with_index do |item,i|
-      puts ".."*level + @dataset_properties[:attribute_names][tree.attr_index].to_s + "=" + item + "  [" + str_distribution(tree.examples) + "]"
+      puts ".."*level + @dataset_properties[:attribute_names][tree.attr_index].to_s + "=" + item + "  [" + str_distribution(tree.children[i].examples) + "]"
       print_branch(tree.children[i],level+1)
     end
   end
@@ -311,4 +318,4 @@ baloon_dataset_properties ={
 :attribute_names => [:color, :size, :act, :age, :inflated]
 }
 # main
-baloon = ID3.new(car_dataset_properties)
+baloon = ID3.new(baloon_dataset_properties)
