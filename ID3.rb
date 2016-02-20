@@ -13,16 +13,17 @@ class Decision_Tree
 
 end
 
+
 class ID3
 
   def initialize(dataset_properties)
     @dataset_properties = dataset_properties
 
     read_csv(dataset_properties[:dataset_path])
-    # find_class_names dataset_properties[:target_attr_index]
     find_all_attr_values
     shuffle_examples dataset_properties[:dataset_name]
-    # disp_data
+    substitute_missing_values
+    disp_data
     decision_tree_construction
     print_tree
   end
@@ -48,35 +49,6 @@ class ID3
     print_branch(@tree,level)
   end
 
-  def print_branch(tree,level)
-    if tree.label != nil
-      puts ".."*level + "class = " + tree.label + "  " + str_distribution(tree.examples)
-      return
-    end
-
-    tree.conditions.each_with_index do |item,i|
-      puts ".."*level + @dataset_properties[:attribute_names][tree.attr_index].to_s + "=" + item + "  [" + str_distribution(tree.examples) + "]"
-      print_branch(tree.children[i],level+1)
-    end
-  end
-
-  def str_distribution(examples)
-    class_count = Hash.new
-
-    @attr_values[@dataset_properties[:target_attr_index]].each do |item|
-      class_count[item] = 0
-    end
-
-    examples.each do |item|
-      if !class_count.has_key? item[@dataset_properties[:target_attr_index]]
-        class_count[item[@dataset_properties[:target_attr_index]]] = 1
-      else
-        class_count[item[@dataset_properties[:target_attr_index]]] += 1
-      end
-    end
-
-    class_count.to_s
-  end
 
   #helper functions
   def read_csv(file_path)
@@ -84,14 +56,24 @@ class ID3
   end
 
 
-  # def find_class_names(target_attr_index)
-  #   @class_names = []
-  #   @raw_data.each do |item|
-  #     if !@class_names.include? item[target_attr_index]
-  #       @class_names << item[target_attr_index]
-  #     end
-  #   end
-  # end
+  # The method to achieve this function is that: find the most common value of this attr and substitue the symbol of missing value to it.
+  # However, there's two concerns about using this method
+  # 1. It doesn't work if the symbol of missing value is the dominant value
+  # 2. It doesn't work if the attr of the missing value is real type
+  def substitute_missing_values
+    if @dataset_properties[:missing_value] == false
+      return
+    end
+
+    (1..num_of_attr).each do |i|
+      @raw_data.each do |item|
+        if item[i-1] == @dataset_properties[:missing_symbol]
+          item[i-1] = most_common_value @raw_data,i-1
+        end
+      end
+    end
+
+  end
 
 
   def shuffle_examples(save_path)
@@ -171,25 +153,26 @@ class ID3
   end
 
 
-  def most_common_value(examples)
+  def most_common_value(examples, attr_index=@dataset_properties[:target_attr_index])
     stat = Hash.new
     examples.each do |item|
-      if !stat.has_key? item[@dataset_properties[:target_attr_index]]
-        stat[item[@dataset_properties[:target_attr_index]]] = 1
+      if !stat.has_key? item[attr_index]
+        stat[item[attr_index]] = 1
       else
-        stat[item[@dataset_properties[:target_attr_index]]] += 1
+        stat[item[attr_index]] += 1
       end
     end
 
-    max_value = 0;
+    max_value = stat.values[0];
+    max_class = stat.keys[0];
     stat.each_pair do |key,value|
       if value > max_value
         max_value = value
-        class_name = key
+        max_class = key
       end
     end
 
-    class_name
+    max_class
   end
 
 
@@ -257,6 +240,36 @@ class ID3
     subset
   end
 
+  def print_branch(tree,level)
+    if tree.label != nil
+      puts ".."*level + "class = " + tree.label + "  " + str_distribution(tree.examples)
+      return
+    end
+
+    tree.conditions.each_with_index do |item,i|
+      puts ".."*level + @dataset_properties[:attribute_names][tree.attr_index].to_s + "=" + item + "  [" + str_distribution(tree.examples) + "]"
+      print_branch(tree.children[i],level+1)
+    end
+  end
+
+  def str_distribution(examples)
+    class_count = Hash.new
+
+    @attr_values[@dataset_properties[:target_attr_index]].each do |item|
+      class_count[item] = 0
+    end
+
+    examples.each do |item|
+      if !class_count.has_key? item[@dataset_properties[:target_attr_index]]
+        class_count[item[@dataset_properties[:target_attr_index]]] = 1
+      else
+        class_count[item[@dataset_properties[:target_attr_index]]] += 1
+      end
+    end
+
+    class_count.to_s
+  end
+
 
   #getters
   def num_of_attr
@@ -293,9 +306,9 @@ baloon_dataset_properties ={
 :dataset_path => "Datasets/baloon/baloon.data.txt",
 :target_attr_index => 4,
 :real_attr_index => [],
-:missing_value => false,
+:missing_value => true,
+:missing_symbol => "?",
 :attribute_names => [:color, :size, :act, :age, :inflated]
 }
-
 # main
 baloon = ID3.new(car_dataset_properties)
