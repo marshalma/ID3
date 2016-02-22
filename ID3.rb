@@ -49,7 +49,7 @@ class ID3
       end
 
       decision_tree_construction training_set
-      print_tree
+      # print_tree
       results << validation(test_set)
     end
 
@@ -65,10 +65,8 @@ class ID3
 
   def decision_tree_construction data
     remaining_attr_index = []
-    (0..num_of_attr-1).each do |i|
-      if i != target_attr_index
-        remaining_attr_index << i
-      end
+    effective_attr_index.each do |i|
+      remaining_attr_index << i
     end
 
     @tree = id3_proc data,remaining_attr_index
@@ -93,24 +91,24 @@ class ID3
   end
 
 
-  def correct_categorized?(tree,item)
+  def correct_categorized?(tree,test)
     while tree.label == nil
       index = tree.attr_index
       if continuous_attr? index
-        if item[index].to_f <= tree.conditions[0].gsub(/[<=>]/,"").to_f
+        if test[index].to_f <= tree.conditions[0].gsub(/[<=>]/,"").to_f
           tree = tree.children[0]
         else
           tree = tree.children[1]
         end
       else
-        tree.conditions.each_with_index do |item,i|
-          if item[index] == item.gsub(/[<=>]/,"")
+        tree.conditions.each_with_index do |condition,i|
+          if test[index] == condition.gsub(/[<=>]/,"")
             tree = tree.children[i]
           end
         end
       end
     end
-    return tree.label == item[target_attr_index]
+    return tree.label == test[target_attr_index]
   end
 
 
@@ -475,6 +473,10 @@ class ID3
     @raw_data.size
   end
 
+  def effective_attr_index
+    @dataset_properties[:effective_attr_index]
+  end
+
 end
 
 # dataset properties
@@ -482,6 +484,7 @@ iris_dataset_properties ={
 :dataset_name => "iris",
 :dataset_path => "Datasets/iris/iris.data.txt",
 :target_attr_index => 4,
+:effective_attr_index => [0,1,2,3],
 :real_attr_index => [0,1,2,3],
 :missing_value => false,
 :attribute_names => [:sepal_length_in_cm, :sepal_width_in_cm, :petal_length_in_cm, :petal_width_in_cm]
@@ -496,15 +499,15 @@ car_dataset_properties ={
 :attribute_names => [:buying, :maint, :doors, :persons, :lug_boot, :safety]
 }
 
-baloon_dataset_properties ={
-:dataset_name => "baloon",
-:dataset_path => "Datasets/baloon/baloon.data.txt",
-:target_attr_index => 4,
-:real_attr_index => [],
-:missing_value => true,
-:missing_symbol => "?",
-:attribute_names => [:color, :size, :act, :age, :inflated]
-}
+# baloon_dataset_properties ={
+# :dataset_name => "baloon",
+# :dataset_path => "Datasets/baloon/baloon.data.txt",
+# :target_attr_index => 4,
+# :real_attr_index => [],
+# :missing_value => true,
+# :missing_symbol => "?",
+# :attribute_names => [:color, :size, :act, :age, :inflated]
+# }
 
 breast_dataset_properties ={
 :dataset_name => "breast",
@@ -514,16 +517,6 @@ breast_dataset_properties ={
 :missing_value => true,
 :missing_symbol => "?",
 :attribute_names => [:a_0, :a_1, :a_2, :a_3, :a_4, :a_5, :a_6, :a_7, :a_8, :a_9]
-}
-
-abalone_dataset_properties ={
-:dataset_name => "abalone",
-:dataset_path => "Datasets/abalone/abalone.data.txt",
-:target_attr_index => 8,
-:real_attr_index => [1,2,3,4,5,6,7],
-:missing_value => false,
-:missing_symbol => "?",
-:attribute_names => [:a_0, :a_1, :a_2, :a_3, :a_4, :a_5, :a_6, :a_7]
 }
 
 wine_dataset_properties ={
@@ -536,6 +529,27 @@ wine_dataset_properties ={
 :attribute_names => [:alcohol, :malic_acid, :ash, :alcalinity_of_ash, :magnesium, :total_phenols, :flavanoids, :nonflavanoid_phenols, :proanthocyanins, :color_intensity, :hue, :OD280_315, :proline]
 }
 
+# id3 is not effective upon this dataset
+balance_dataset_properties ={
+:dataset_name => "balance_scale",
+:dataset_path => "Datasets/balance_scale/balance-scale.data.txt",
+:target_attr_index => 0,
+:real_attr_index => [],
+:missing_value => false,
+:missing_symbol => "?",
+:attribute_names => [:left_weight, :left_distance, :right_weight, :right_distance]
+}
+
+hayes_dataset_properties ={
+:dataset_name => "hayes-roth",
+:dataset_path => "Datasets/hayes-roth/hayes-roth.data.txt",
+:target_attr_index => 5,
+:effective_attr_index => (1..4),
+:real_attr_index => [],
+:missing_value => false,
+:missing_symbol => "?",
+:attribute_names => [:hobby, :age, :educational, :marital]
+}
 
 # main
-wine = ID3.new(wine_dataset_properties)
+iris = ID3.new(iris_dataset_properties)
