@@ -171,7 +171,7 @@ class ID3
     tree = Decision_Tree.new
     tree.examples = examples
     if all_example_belong_to_one_class? examples
-      tree.label = examples[0][@dataset_properties[:target_attr_index]]
+      tree.label = examples[0][target_attr_index]
       return tree
     end
 
@@ -250,9 +250,9 @@ class ID3
 
 
   def all_example_belong_to_one_class?(examples)
-    default_class = examples[0][@dataset_properties[:target_attr_index]]
+    default_class = examples[0][target_attr_index]
     examples.each do |item|
-      if item[@dataset_properties[:target_attr_index]] != default_class
+      if item[target_attr_index] != default_class
         return false
       end
     end
@@ -260,7 +260,7 @@ class ID3
   end
 
 
-  def most_common_value(examples, attr_index=@dataset_properties[:target_attr_index])
+  def most_common_value(examples, attr_index=target_attr_index)
     stat = Hash.new
     examples.each do |item|
       if !stat.has_key? item[attr_index]
@@ -353,10 +353,10 @@ class ID3
     class_count = Hash.new
     total_count = examples.size
     examples.each do |item|
-      if !class_count.has_key? item[@dataset_properties[:target_attr_index]]
-        class_count[item[@dataset_properties[:target_attr_index]]] = 1
+      if !class_count.has_key? item[target_attr_index]
+        class_count[item[target_attr_index]] = 1
       else
-        class_count[item[@dataset_properties[:target_attr_index]]] += 1
+        class_count[item[target_attr_index]] += 1
       end
     end
 
@@ -441,15 +441,15 @@ class ID3
   def str_distribution(examples)
     class_count = Hash.new
 
-    @attr_values[@dataset_properties[:target_attr_index]].each do |item|
+    @attr_values[target_attr_index].each do |item|
       class_count[item] = 0
     end
 
     examples.each do |item|
-      if !class_count.has_key? item[@dataset_properties[:target_attr_index]]
-        class_count[item[@dataset_properties[:target_attr_index]]] = 1
+      if !class_count.has_key? item[target_attr_index]
+        class_count[item[target_attr_index]] = 1
       else
-        class_count[item[@dataset_properties[:target_attr_index]]] += 1
+        class_count[item[target_attr_index]] += 1
       end
     end
 
