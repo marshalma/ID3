@@ -22,23 +22,54 @@ class ID3
     read_csv(dataset_properties[:dataset_path])
     substitute_missing_values
     find_all_attr_values
-    shuffle_examples dataset_properties[:dataset_name]
-
-
-
+    @shuffled_data = @raw_data
+    # shuffle_examples dataset_properties[:dataset_name]
     # disp_data
-    decision_tree_construction
-    print_tree
+
+    # exit if there are too few examples.
+    if @shuffled_data.size < 100
+      puts "not enough examples for 10-fold-cross-validation"
+      exit
+    end
+
+    # 10-fold-cross-validation
+    results = []
+    num_each_fold = @shuffled_data.size / 10
+    (0..9).each do |i|
+      puts (i+1).to_s + "/10..."
+      test_set = []
+      training_set = []
+      range = (i*num_each_fold..(i+1)*num_each_fold-1)
+      @shuffled_data.size.times do |j|
+        if range.include? j
+          test_set << @shuffled_data[j]
+        else
+          training_set << @shuffled_data[j]
+        end
+      end
+
+      decision_tree_construction training_set
+      print_tree
+      results << validation(test_set)
+    end
+
+    puts results.to_s
+    mean = 0
+    results.each do |v|
+      mean += v
+    end
+    mean /= results.size.to_f
+    puts mean.to_s
   end
 
 
-  def decision_tree_construction
+  def decision_tree_construction data
     remaining_attr_index = []
     (1..num_of_attr).each do |i|
       remaining_attr_index << i-1
     end
 
-    @tree = id3_proc @shuffled_data,remaining_attr_index
+    @tree = id3_proc data,remaining_attr_index
     return 0
   end
 
@@ -47,7 +78,38 @@ class ID3
   end
 
 
+  def validation(test_set)
+    total_num = test_set.size
+    correct_num = 0
+    test_set.each do |item|
+      if correct_categorized? @tree,item
+        correct_num += 1
+      end
+    end
 
+    return correct_num.to_f/total_num.to_f
+  end
+
+
+  def correct_categorized?(tree,item)
+    while tree.label == nil
+      index = tree.attr_index
+      if continuous_attr? index
+        if item[index].to_f <= tree.conditions[0].gsub(/[<=>]/,"").to_f
+          tree = tree.children[0]
+        else
+          tree = tree.children[1]
+        end
+      else
+        tree.conditions.each_with_index do |item,i|
+          if item[index] == item.gsub(/[<=>]/,"")
+            tree = tree.children[i]
+          end
+        end
+      end
+    end
+    return tree.label == item[target_attr_index]
+  end
 
 
   #helper functions
@@ -122,6 +184,10 @@ class ID3
     tree.attr_index = this_attr_index
 
     if continuous_attr? this_attr_index
+      if only_one_continuous_value this_attr_index, examples
+        tree.label = most_common_value examples
+        return tree
+      end
       id3_continuous_sub_proc tree,examples,this_attr_index,remaining_attr_index
     else
       id3_discrete_sub_proc tree,examples,this_attr_index,remaining_attr_index
@@ -167,6 +233,22 @@ class ID3
   end
 
 
+  def only_one_continuous_value(attr_index, examples)
+    table = Hash.new
+    examples.each do |item|
+      if !table.has_key? item[attr_index]
+        table[item[attr_index]] = 1
+      end
+    end
+
+    if table.keys.size == 1
+      return true
+    else
+      return false
+    end
+  end
+
+
   def all_example_belong_to_one_class?(examples)
     default_class = examples[0][@dataset_properties[:target_attr_index]]
     examples.each do |item|
@@ -201,6 +283,28 @@ class ID3
   end
 
 
+  def best_attr_index(examples,remaining_attr_index)
+    info_gain = Hash.new
+    remaining_attr_index.each do |item|
+      if continuous_attr? item
+        info_gain[item] = continuous_info_gain(item,examples)
+      else
+        info_gain[item] = discrete_info_gain(item,examples)
+      end
+    end
+
+    max_info_gain = info_gain.values[0]
+    max_info_gain_index = info_gain.keys[0]
+    info_gain.each_pair do |key,value|
+      if max_info_gain < value
+        max_info_gain = value
+        max_info_gain_index = key
+      end
+    end
+
+    max_info_gain_index
+  end
+
 
   def discrete_info_gain(attr_index,examples)
     original_entropy = entropy examples
@@ -221,7 +325,7 @@ class ID3
     original_size = examples.size
 
     if examples.size == 1
-      return original_entropy
+      return 0
     end
 
     new_weighted_entropies = Hash.new
@@ -238,7 +342,9 @@ class ID3
     end
 
     min_weighted_entropy = new_weighted_entropies.keys.min
-    # @this_subsets = new_weighted_entropies[min_weighted_entropy] # this way of handling is ugly :(
+    if min_weighted_entropy == nil
+      return 0
+    end
     return original_entropy - min_weighted_entropy
   end
 
@@ -310,28 +416,6 @@ class ID3
 
     min_weighted_entropy = new_weighted_entropies.keys.min
     return new_weighted_entropies[min_weighted_entropy] # this way of handling is ugly :(
-  end
-
-  def best_attr_index(examples,remaining_attr_index)
-    info_gain = Hash.new
-    remaining_attr_index.each do |item|
-      if continuous_attr? item
-        info_gain[item] = continuous_info_gain(item,examples)
-      else
-        info_gain[item] = discrete_info_gain(item,examples)
-      end
-    end
-
-    max_info_gain = info_gain.values[0]
-    max_info_gain_index = info_gain.keys[0]
-    info_gain.each_pair do |key,value|
-      if max_info_gain < value
-        max_info_gain = value
-        max_info_gain_index = key
-      end
-    end
-
-    max_info_gain_index
   end
 
 
@@ -419,5 +503,25 @@ baloon_dataset_properties ={
 :missing_symbol => "?",
 :attribute_names => [:color, :size, :act, :age, :inflated]
 }
+
+breast_dataset_properties ={
+:dataset_name => "breast",
+:dataset_path => "Datasets/breast_cancer_wisconsin/breast-cancer-wisconsin.data.txt",
+:target_attr_index => 10,
+:real_attr_index => [0,1,2,3,4,5,6,7,8,9],
+:missing_value => true,
+:missing_symbol => "?",
+:attribute_names => [:a_0, :a_1, :a_2, :a_3, :a_4, :a_5, :a_6, :a_7, :a_8, :a_9]
+}
+
+abalone_dataset_properties ={
+:dataset_name => "abalone",
+:dataset_path => "Datasets/abalone/abalone.data.txt",
+:target_attr_index => 8,
+:real_attr_index => [1,2,3,4,5,6,7],
+:missing_value => false,
+:missing_symbol => "?",
+:attribute_names => [:a_0, :a_1, :a_2, :a_3, :a_4, :a_5, :a_6, :a_7]
+}
 # main
-iris = ID3.new(iris_dataset_properties)
+breast = ID3.new(breast_dataset_properties)
