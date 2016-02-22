@@ -23,7 +23,10 @@ class ID3
     substitute_missing_values
     find_all_attr_values
     shuffle_examples dataset_properties[:dataset_name]
-    disp_data
+
+
+
+    # disp_data
     decision_tree_construction
     print_tree
   end
@@ -44,11 +47,7 @@ class ID3
   end
 
 
-  def print_tree
-    level = 1
-    puts "node   " + str_distribution(@tree.examples)
-    print_branch(@tree,level)
-  end
+
 
 
   #helper functions
@@ -122,15 +121,19 @@ class ID3
     this_attr_index = best_attr_index examples,remaining_attr_index # returns the index of attr with most information gain
     tree.attr_index = this_attr_index
 
-    id3_discrete_sub_proc this_attr_index,tree,examples,remaining_attr_index
+    if continuous_attr? this_attr_index
+      id3_continuous_sub_proc tree,examples,this_attr_index,remaining_attr_index
+    else
+      id3_discrete_sub_proc tree,examples,this_attr_index,remaining_attr_index
+    end
 
     tree
   end
 
 
-  def id3_discrete_sub_proc(this_attr_index,tree,examples,remaining_attr_index)
+  def id3_discrete_sub_proc(tree,examples,this_attr_index,remaining_attr_index)
     @attr_values[this_attr_index].each do |item|
-      tree.conditions << item
+      tree.conditions << "="+item
       subset = find_subset_with_attr_value this_attr_index,item,examples
       if subset.size == 0
         subtree = Decision_Tree.new
@@ -146,6 +149,21 @@ class ID3
         tree.children << id3_proc(subset,remaining_attr_index_new)
       end
     end
+  end
+
+
+  def id3_continuous_sub_proc(tree,examples,this_attr_index,remaining_attr_index)
+    subset1, subset2 = divide_set_with_continuous_attr this_attr_index, examples
+    tree.conditions << "<=" + (find_attr_max_value this_attr_index, subset1).to_s
+    tree.conditions << ">" + (find_attr_max_value this_attr_index, subset1).to_s
+    remaining_attr_index_new = []
+    remaining_attr_index.each do |i|
+      if i != this_attr_index
+        remaining_attr_index_new << i
+      end
+    end
+    tree.children << id3_proc(subset1,remaining_attr_index_new)
+    tree.children << id3_proc(subset2,remaining_attr_index_new)
   end
 
 
@@ -183,26 +201,8 @@ class ID3
   end
 
 
-  def best_attr_index(examples,remaining_attr_index)
-    info_gain = Hash.new
-    remaining_attr_index.each do |item|
-      info_gain[item] = this_info_gain(item,examples)
-    end
 
-    max_info_gain = info_gain.values[0]
-    max_info_gain_index = info_gain.keys[0]
-    info_gain.each_pair do |key,value|
-      if max_info_gain < value
-        max_info_gain = value
-        max_info_gain_index = key
-      end
-    end
-
-    max_info_gain_index
-  end
-
-
-  def this_info_gain(attr_index,examples)
+  def discrete_info_gain(attr_index,examples)
     original_entropy = entropy examples
     original_size = examples.size
 
@@ -213,6 +213,33 @@ class ID3
     end
 
     original_entropy - new_weighted_entropy
+  end
+
+
+  def continuous_info_gain(attr_index,examples)
+    original_entropy = entropy examples
+    original_size = examples.size
+
+    if examples.size == 1
+      return original_entropy
+    end
+
+    new_weighted_entropies = Hash.new
+    examples = examples.sort {|x,y| x[attr_index] <=> y[attr_index]}
+    (0..examples.size-2).each do |i|
+      # puts i.to_s
+      if examples[i][attr_index] != examples[i+1][attr_index]
+        threshold = (examples[i][attr_index].to_f + examples[i][attr_index].to_f) / 2.0
+        subset1, subset2 = examples[0..i], examples[i+1..-1]
+        weighted_entropy = (subset1.size.to_f * (entropy subset1) + subset2.size.to_f * (entropy subset2))/original_size.to_f
+        # puts weighted_entropy.to_s
+        new_weighted_entropies[weighted_entropy] = [subset1, subset2, threshold]
+      end
+    end
+
+    min_weighted_entropy = new_weighted_entropies.keys.min
+    # @this_subsets = new_weighted_entropies[min_weighted_entropy] # this way of handling is ugly :(
+    return original_entropy - min_weighted_entropy
   end
 
 
@@ -236,6 +263,16 @@ class ID3
     entropy
   end
 
+  def find_attr_max_value(attr_index, examples)
+    max = examples[0][attr_index]
+    examples.each do |item|
+      if max < item[attr_index]
+        max = item[attr_index]
+      end
+    end
+    max
+  end
+
 
   def find_subset_with_attr_value(attr_index, attr_value, examples)
     subset = []
@@ -247,6 +284,64 @@ class ID3
     subset
   end
 
+
+  def divide_set_with_continuous_attr(attr_index, examples)
+    original_entropy = entropy examples
+    original_size = examples.size
+
+    if examples.size == 1
+      return original_entropy
+    end
+
+    subset1 = []
+    subset2 = []
+    new_weighted_entropies = Hash.new
+    examples = examples.sort {|x,y| x[attr_index] <=> y[attr_index]}
+    (0..examples.size-2).each do |i|
+      # puts i.to_s
+      if examples[i][attr_index] != examples[i+1][attr_index]
+        threshold = (examples[i][attr_index].to_f + examples[i][attr_index].to_f) / 2.0
+        subset1, subset2 = examples[0..i], examples[i+1..-1]
+        weighted_entropy = (subset1.size.to_f * (entropy subset1) + subset2.size.to_f * (entropy subset2))/original_size.to_f
+        # puts weighted_entropy.to_s
+        new_weighted_entropies[weighted_entropy] = [subset1, subset2, threshold]
+      end
+    end
+
+    min_weighted_entropy = new_weighted_entropies.keys.min
+    return new_weighted_entropies[min_weighted_entropy] # this way of handling is ugly :(
+  end
+
+  def best_attr_index(examples,remaining_attr_index)
+    info_gain = Hash.new
+    remaining_attr_index.each do |item|
+      if continuous_attr? item
+        info_gain[item] = continuous_info_gain(item,examples)
+      else
+        info_gain[item] = discrete_info_gain(item,examples)
+      end
+    end
+
+    max_info_gain = info_gain.values[0]
+    max_info_gain_index = info_gain.keys[0]
+    info_gain.each_pair do |key,value|
+      if max_info_gain < value
+        max_info_gain = value
+        max_info_gain_index = key
+      end
+    end
+
+    max_info_gain_index
+  end
+
+
+  # print results
+  def print_tree
+    level = 1
+    puts "root_node   " + str_distribution(@tree.examples)
+    print_branch(@tree,level)
+  end
+
   def print_branch(tree,level)
     if tree.label != nil
       puts ".."*level + "class = " + tree.label + "  " + str_distribution(tree.examples)
@@ -254,7 +349,7 @@ class ID3
     end
 
     tree.conditions.each_with_index do |item,i|
-      puts ".."*level + @dataset_properties[:attribute_names][tree.attr_index].to_s + "=" + item + "  [" + str_distribution(tree.children[i].examples) + "]"
+      puts ".."*level + @dataset_properties[:attribute_names][tree.attr_index].to_s + item + "  [" + str_distribution(tree.children[i].examples) + "]"
       print_branch(tree.children[i],level+1)
     end
   end
@@ -277,8 +372,15 @@ class ID3
     class_count.to_s
   end
 
+  #getter
+  def continuous_attr?(index)
+    @dataset_properties[:real_attr_index].include? index
+  end
 
-  #getters
+  def target_attr_index
+    @dataset_properties[:target_attr_index]
+  end
+
   def num_of_attr
     @raw_data[0].size - 1 # Normally, the last one is class, rather than attribute.
   end
@@ -318,4 +420,4 @@ baloon_dataset_properties ={
 :attribute_names => [:color, :size, :act, :age, :inflated]
 }
 # main
-baloon = ID3.new(baloon_dataset_properties)
+iris = ID3.new(iris_dataset_properties)
