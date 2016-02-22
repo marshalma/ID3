@@ -65,8 +65,10 @@ class ID3
 
   def decision_tree_construction data
     remaining_attr_index = []
-    (1..num_of_attr).each do |i|
-      remaining_attr_index << i-1
+    (0..num_of_attr-1).each do |i|
+      if i != target_attr_index
+        remaining_attr_index << i
+      end
     end
 
     @tree = id3_proc data,remaining_attr_index
@@ -523,5 +525,17 @@ abalone_dataset_properties ={
 :missing_symbol => "?",
 :attribute_names => [:a_0, :a_1, :a_2, :a_3, :a_4, :a_5, :a_6, :a_7]
 }
+
+wine_dataset_properties ={
+:dataset_name => "wine",
+:dataset_path => "Datasets/wine/wine.data.txt",
+:target_attr_index => 0,
+:real_attr_index => [1,2,3,4,5,6,7,8,9,10,11,12,13],
+:missing_value => false,
+:missing_symbol => "?",
+:attribute_names => [:alcohol, :malic_acid, :ash, :alcalinity_of_ash, :magnesium, :total_phenols, :flavanoids, :nonflavanoid_phenols, :proanthocyanins, :color_intensity, :hue, :OD280_315, :proline]
+}
+
+
 # main
-breast = ID3.new(breast_dataset_properties)
+wine = ID3.new(wine_dataset_properties)
