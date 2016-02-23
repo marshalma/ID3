@@ -1,4 +1,5 @@
 require "CSV"
+require "thread"
 
 class Decision_Tree
   attr_accessor :children, :conditions, :examples, :attr_index, :label
@@ -10,56 +11,86 @@ class Decision_Tree
     @attr_index = nil
     @label = nil
   end
-
 end
 
 
 class ID3
 
   def initialize(dataset_properties)
+    # @dataset_properties = dataset_properties
+    #
+    # read_csv(dataset_properties[:dataset_path])
+    # substitute_missing_values
+    # find_all_attr_values
+    # # @shuffled_data = @raw_data
+    # shuffle_examples dataset_properties[:dataset_name]
+    # create_validation_set
+    # # disp_data
+    #
+    # # exit if there are too few examples.
+    # if @shuffled_data.size < 100
+    #   puts "not enough examples for 10-fold-cross-validation"
+    #   exit
+    # end
+    #
+    # # 10-fold-cross-validation
+    # results = []
+    # num_each_fold = @shuffled_data.size / 10
+    # (0..9).each do |i|
+    #   puts (i+1).to_s + "/10..."
+    #   test_set = []
+    #   training_set = []
+    #   range = (i*num_each_fold..(i+1)*num_each_fold-1)
+    #   @shuffled_data.size.times do |j|
+    #     if range.include? j
+    #       test_set << @shuffled_data[j]
+    #     else
+    #       training_set << @shuffled_data[j]
+    #     end
+    #   end
+    #
+    #   decision_tree_construction training_set
+    #   print_tree @tree
+    #   results << validation(@tree,test_set)
+    # end
+    #
+    # puts results.to_s
+    # mean = 0
+    # results.each do |v|
+    #   mean += v
+    # end
+    # mean /= results.size.to_f
+    # puts mean.to_s
+    proc dataset_properties
+  end
+
+
+  def proc(dataset_properties)
     @dataset_properties = dataset_properties
 
     read_csv(dataset_properties[:dataset_path])
     substitute_missing_values
     find_all_attr_values
-    @shuffled_data = @raw_data
-    # shuffle_examples dataset_properties[:dataset_name]
-    # disp_data
+    # @shuffled_data = @raw_data
+    shuffle_examples dataset_properties[:dataset_name]
+    create_validation_set
 
-    # exit if there are too few examples.
-    if @shuffled_data.size < 100
-      puts "not enough examples for 10-fold-cross-validation"
-      exit
-    end
+    training_set = @shuffled_data[0..(@shuffled_data.size * 7 / 10)]
+    test_set = @shuffled_data[(@shuffled_data.size * 7 / 10 + 1) .. -1]
+    decision_tree_construction training_set
+    print_tree @tree
+    puts validation(@tree,test_set).to_s
+    prune
+    print_tree @pruned_tree
+    puts validation(@pruned_tree,test_set).to_s
 
-    # 10-fold-cross-validation
-    results = []
-    num_each_fold = @shuffled_data.size / 10
-    (0..9).each do |i|
-      puts (i+1).to_s + "/10..."
-      test_set = []
-      training_set = []
-      range = (i*num_each_fold..(i+1)*num_each_fold-1)
-      @shuffled_data.size.times do |j|
-        if range.include? j
-          test_set << @shuffled_data[j]
-        else
-          training_set << @shuffled_data[j]
-        end
-      end
+  end
 
-      decision_tree_construction training_set
-      # print_tree
-      results << validation(test_set)
-    end
 
-    puts results.to_s
-    mean = 0
-    results.each do |v|
-      mean += v
-    end
-    mean /= results.size.to_f
-    puts mean.to_s
+  def create_validation_set
+    total_size = @shuffled_data.size
+    validation_size = total_size/3
+    @validation_set_for_pruning = @shuffled_data.slice! 0,validation_size
   end
 
 
@@ -74,15 +105,49 @@ class ID3
   end
 
 
-  def pruning
+  def prune
+    tree = @tree
+    @pruned_tree = tree
+    puts (validation @pruned_tree, @validation_set_for_pruning).to_s
+    loop do
+      reduced_error_hash = Hash.new
+      queue = Queue.new
+      trace = []
+      queue << [tree,trace]
+
+      while queue.size > 0
+        this_tree,q = queue.deq
+        tmp_tree = delete_node Marshal.load(Marshal.dump(tree)), q
+        reduced_error = validation(tmp_tree, @validation_set_for_pruning) - validation(tree, @validation_set_for_pruning)
+        reduced_error_hash[reduced_error] = q
+        if this_tree.children.size > 0
+          this_tree.children.each_with_index do |child,i|
+            queue << [this_tree.children[i],(q + [i])] if child.label == nil
+          end
+        end
+      end
+
+
+      # puts reduced_error_hash.keys.max
+      if reduced_error_hash.keys.max <= 0.0
+        return
+      else
+        trace_of_node_to_be_deleted = reduced_error_hash[reduced_error_hash.keys.max]
+        tree = delete_node tree,trace_of_node_to_be_deleted
+        @pruned_tree = tree
+        puts (validation @pruned_tree, @validation_set_for_pruning).to_s
+      end
+
+
+    end
   end
 
 
-  def validation(test_set)
+  def validation(tree,test_set)
     total_num = test_set.size
     correct_num = 0
     test_set.each do |item|
-      if correct_categorized? @tree,item
+      if correct_categorized? tree,item
         correct_num += 1
       end
     end
@@ -420,10 +485,10 @@ class ID3
 
 
   # print results
-  def print_tree
+  def print_tree(tree)
     level = 1
-    puts "root_node   " + str_distribution(@tree.examples)
-    print_branch(@tree,level)
+    puts "root_node   " + str_distribution(tree.examples)
+    print_branch(tree,level)
   end
 
   def print_branch(tree,level)
@@ -455,6 +520,23 @@ class ID3
 
     class_count.to_s
   end
+
+
+  def delete_node(tree,trace)
+    if trace.size == 0
+      return tree
+    end
+
+    root = tree
+    trace.each do |direction|
+      tree = tree.children[direction]
+    end
+    tree.label = most_common_value tree.examples
+    tree.conditions = []
+    tree.children = []
+    root
+  end
+
 
   #getter
   def continuous_attr?(index)
@@ -494,25 +576,28 @@ car_dataset_properties ={
 :dataset_name => "car",
 :dataset_path => "Datasets/car/car.data.txt",
 :target_attr_index => 6,
+:effective_attr_index => (0..5),
 :real_attr_index => [],
 :missing_value => false,
 :attribute_names => [:buying, :maint, :doors, :persons, :lug_boot, :safety]
 }
 
-# baloon_dataset_properties ={
-# :dataset_name => "baloon",
-# :dataset_path => "Datasets/baloon/baloon.data.txt",
-# :target_attr_index => 4,
-# :real_attr_index => [],
-# :missing_value => true,
-# :missing_symbol => "?",
-# :attribute_names => [:color, :size, :act, :age, :inflated]
-# }
+baloon_dataset_properties ={
+:dataset_name => "baloon",
+:dataset_path => "Datasets/baloon/baloon.data.txt",
+:target_attr_index => 4,
+:effective_attr_index => (0..3),
+:real_attr_index => [],
+:missing_value => true,
+:missing_symbol => "?",
+:attribute_names => [:color, :size, :act, :age]
+}
 
 breast_dataset_properties ={
 :dataset_name => "breast",
-:dataset_path => "Datasets/breast_cancer_wisconsin/breast-cancer-wisconsin.data.txt",
+:dataset_path => "Datasets/breast_cancer/breast-cancer-wisconsin.data.txt",
 :target_attr_index => 10,
+:effective_attr_index => (0..9),
 :real_attr_index => [0,1,2,3,4,5,6,7,8,9],
 :missing_value => true,
 :missing_symbol => "?",
@@ -523,22 +608,23 @@ wine_dataset_properties ={
 :dataset_name => "wine",
 :dataset_path => "Datasets/wine/wine.data.txt",
 :target_attr_index => 0,
+:effective_attr_index => (1..13),
 :real_attr_index => [1,2,3,4,5,6,7,8,9,10,11,12,13],
 :missing_value => false,
 :missing_symbol => "?",
-:attribute_names => [:alcohol, :malic_acid, :ash, :alcalinity_of_ash, :magnesium, :total_phenols, :flavanoids, :nonflavanoid_phenols, :proanthocyanins, :color_intensity, :hue, :OD280_315, :proline]
+:attribute_names => [:_,:alcohol, :malic_acid, :ash, :alcalinity_of_ash, :magnesium, :total_phenols, :flavanoids, :nonflavanoid_phenols, :proanthocyanins, :color_intensity, :hue, :OD280_315, :proline]
 }
 
 # id3 is not effective upon this dataset
-balance_dataset_properties ={
-:dataset_name => "balance_scale",
-:dataset_path => "Datasets/balance_scale/balance-scale.data.txt",
-:target_attr_index => 0,
-:real_attr_index => [],
-:missing_value => false,
-:missing_symbol => "?",
-:attribute_names => [:left_weight, :left_distance, :right_weight, :right_distance]
-}
+# balance_dataset_properties ={
+# :dataset_name => "balance_scale",
+# :dataset_path => "Datasets/balance_scale/balance-scale.data.txt",
+# :target_attr_index => 0,
+# :real_attr_index => [],
+# :missing_value => false,
+# :missing_symbol => "?",
+# :attribute_names => [:left_weight, :left_distance, :right_weight, :right_distance]
+# }
 
 hayes_dataset_properties ={
 :dataset_name => "hayes-roth",
@@ -548,8 +634,8 @@ hayes_dataset_properties ={
 :real_attr_index => [],
 :missing_value => false,
 :missing_symbol => "?",
-:attribute_names => [:hobby, :age, :educational, :marital]
+:attribute_names => [:_,:hobby, :age, :educational, :marital]
 }
 
 # main
-iris = ID3.new(iris_dataset_properties)
+iris = ID3.new(baloon_dataset_properties)
