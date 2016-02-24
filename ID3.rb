@@ -577,6 +577,17 @@ class ID3
 end
 
 # dataset properties
+baloon_dataset_properties ={
+:dataset_name => "baloon",
+:dataset_path => "Datasets/baloon/baloon.data.txt",
+:target_attr_index => 4,
+:effective_attr_index => (0..3),
+:real_attr_index => [],
+:missing_value => true,
+:missing_symbol => "?",
+:attribute_names => [:color, :size, :act, :age]
+}
+
 iris_dataset_properties ={
 :dataset_name => "iris",
 :dataset_path => "Datasets/iris/iris.data.txt",
@@ -595,17 +606,6 @@ car_dataset_properties ={
 :real_attr_index => [],
 :missing_value => false,
 :attribute_names => [:buying, :maint, :doors, :persons, :lug_boot, :safety]
-}
-
-baloon_dataset_properties ={
-:dataset_name => "baloon",
-:dataset_path => "Datasets/baloon/baloon.data.txt",
-:target_attr_index => 4,
-:effective_attr_index => (0..3),
-:real_attr_index => [],
-:missing_value => true,
-:missing_symbol => "?",
-:attribute_names => [:color, :size, :act, :age]
 }
 
 breast_dataset_properties ={
@@ -630,27 +630,27 @@ wine_dataset_properties ={
 :attribute_names => [:_,:alcohol, :malic_acid, :ash, :alcalinity_of_ash, :magnesium, :total_phenols, :flavanoids, :nonflavanoid_phenols, :proanthocyanins, :color_intensity, :hue, :OD280_315, :proline]
 }
 
-# id3 is not effective upon this dataset
-# balance_dataset_properties ={
-# :dataset_name => "balance_scale",
-# :dataset_path => "Datasets/balance_scale/balance-scale.data.txt",
-# :target_attr_index => 0,
-# :real_attr_index => [],
-# :missing_value => false,
-# :missing_symbol => "?",
-# :attribute_names => [:left_weight, :left_distance, :right_weight, :right_distance]
-# }
-
-hayes_dataset_properties ={
-:dataset_name => "hayes-roth",
-:dataset_path => "Datasets/hayes-roth/hayes-roth.data.txt",
-:target_attr_index => 5,
-:effective_attr_index => (1..4),
-:real_attr_index => [],
+glass_dataset_properties ={
+:dataset_name => "glass",
+:dataset_path => "Datasets/glass/glass.data.txt",
+:target_attr_index => 10,
+:effective_attr_index => (1..9),
+:real_attr_index => (1..9),
 :missing_value => false,
 :missing_symbol => "?",
-:attribute_names => [:_,:hobby, :age, :educational, :marital]
+:attribute_names => [:id, :RI, :Na, :Mg, :Al, :Si, :K, :Ca, :Ba, :Fe]
+}
+
+credit_dataset_properties ={
+:dataset_name => "credit",
+:dataset_path => "Datasets/credit/crx.data.txt",
+:target_attr_index => 15,
+:effective_attr_index => (0..14),
+:real_attr_index => [1,2,7,10,13,14],
+:missing_value => true,
+:missing_symbol => "?",
+:attribute_names => [:a_0,:a_1,:a_2,:a_3,:a_4,:a_5,:a_6,:a_7,:a_8,:a_9,:a_10,:a_11,:a_12,:a_13,:a_14]
 }
 
 # main
-iris = ID3.new(breast_dataset_properties)
+iris = ID3.new(credit_dataset_properties)
