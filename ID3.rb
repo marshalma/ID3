@@ -17,55 +17,6 @@ end
 class ID3
 
   def initialize(dataset_properties)
-    # @dataset_properties = dataset_properties
-    #
-    # read_csv(dataset_properties[:dataset_path])
-    # substitute_missing_values
-    # find_all_attr_values
-    # # @shuffled_data = @raw_data
-    # shuffle_examples dataset_properties[:dataset_name]
-    # create_validation_set
-    # # disp_data
-    #
-    # # exit if there are too few examples.
-    # if @shuffled_data.size < 100
-    #   puts "not enough examples for 10-fold-cross-validation"
-    #   exit
-    # end
-    #
-    # # 10-fold-cross-validation
-    # results = []
-    # num_each_fold = @shuffled_data.size / 10
-    # (0..9).each do |i|
-    #   puts (i+1).to_s + "/10..."
-    #   test_set = []
-    #   training_set = []
-    #   range = (i*num_each_fold..(i+1)*num_each_fold-1)
-    #   @shuffled_data.size.times do |j|
-    #     if range.include? j
-    #       test_set << @shuffled_data[j]
-    #     else
-    #       training_set << @shuffled_data[j]
-    #     end
-    #   end
-    #
-    #   decision_tree_construction training_set
-    #   print_tree @tree
-    #   results << validation(@tree,test_set)
-    # end
-    #
-    # puts results.to_s
-    # mean = 0
-    # results.each do |v|
-    #   mean += v
-    # end
-    # mean /= results.size.to_f
-    # puts mean.to_s
-    proc dataset_properties
-  end
-
-
-  def proc(dataset_properties)
     @dataset_properties = dataset_properties
 
     read_csv(dataset_properties[:dataset_path])
@@ -74,19 +25,82 @@ class ID3
     # @shuffled_data = @raw_data
     shuffle_examples dataset_properties[:dataset_name]
     create_validation_set
+    # disp_data
 
-    training_set = @shuffled_data[0..(@shuffled_data.size * 7 / 10)]
-    test_set = @shuffled_data[(@shuffled_data.size * 7 / 10 + 1) .. -1]
-    decision_tree_construction training_set
-    print_tree @tree
-    puts validation(@tree,test_set).to_s
-    prune
-    print_tree @pruned_tree
-    puts validation(@pruned_tree,test_set).to_s
+    # exit if there are too few examples.
+    if @shuffled_data.size < 100
+      puts "not enough examples for 10-fold-cross-validation"
+      exit
+    end
 
+    # 10-fold-cross-validation
+    results = []
+    results1 = []
+    num_each_fold = @shuffled_data.size / 10
+    (0..9).each do |i|
+      puts "============================================================"
+      puts "CROSS-VALIDATION " + (i+1).to_s + "/10..."
+      test_set = []
+      training_set = []
+      range = (i*num_each_fold..(i+1)*num_each_fold-1)
+      @shuffled_data.size.times do |j|
+        if range.include? j
+          test_set << @shuffled_data[j]
+        else
+          training_set << @shuffled_data[j]
+        end
+      end
+
+      decision_tree_construction training_set
+      puts "========================original tree======================="
+      print_tree @tree
+      results << validation(@tree,test_set)
+      prune
+      puts "=========================pruned tree========================"
+      print_tree @pruned_tree
+      results1 << validation(@pruned_tree,test_set)
+    end
+
+    puts "unpruned tree mean accuracies using 10 fold CR: " + results.to_s
+    puts "pruned tree mean accuracies using 10 fold CR: " + results1.to_s
+    mean = 0
+    mean1 = 0
+    results.each do |v|
+      mean += v
+    end
+    results1.each do |v|
+      mean1 += v
+    end
+    mean /= results.size.to_f
+    mean1 /= results.size.to_f
+    puts "unpruned mean accuracy: " + mean.to_s
+    puts "pruned accuracy: " + mean1.to_s
+    # proc dataset_properties
   end
 
 
+  # def proc(dataset_properties)
+  #   @dataset_properties = dataset_properties
+  #
+  #   read_csv(dataset_properties[:dataset_path])
+  #   substitute_missing_values
+  #   find_all_attr_values
+  #   @shuffled_data = @raw_data
+  #   shuffle_examples dataset_properties[:dataset_name]
+  #   create_validation_set
+  #
+  #   training_set = @shuffled_data[0..(@shuffled_data.size * 7 / 10)]
+  #   test_set = @shuffled_data[(@shuffled_data.size * 7 / 10 + 1) .. -1]
+  #   decision_tree_construction training_set
+  #   print_tree @tree
+  #   puts validation(@tree,test_set).to_s
+  #   prune
+  #   print_tree @pruned_tree
+  #   puts validation(@pruned_tree,test_set).to_s
+  # end
+
+
+  # create validation set for pruning
   def create_validation_set
     total_size = @shuffled_data.size
     validation_size = total_size/3
@@ -108,8 +122,12 @@ class ID3
   def prune
     tree = @tree
     @pruned_tree = tree
-    puts (validation @pruned_tree, @validation_set_for_pruning).to_s
-    loop do
+    puts "============================================================"
+    puts "start pruning..."
+    puts "step0: " + (validation @pruned_tree, @validation_set_for_pruning).to_s
+
+    index = 1
+    loop do |i|
       reduced_error_hash = Hash.new
       queue = Queue.new
       trace = []
@@ -126,8 +144,6 @@ class ID3
           end
         end
       end
-
-
       # puts reduced_error_hash.keys.max
       if reduced_error_hash.keys.max <= 0.0
         return
@@ -135,10 +151,9 @@ class ID3
         trace_of_node_to_be_deleted = reduced_error_hash[reduced_error_hash.keys.max]
         tree = delete_node tree,trace_of_node_to_be_deleted
         @pruned_tree = tree
-        puts (validation @pruned_tree, @validation_set_for_pruning).to_s
+        puts "step" + index.to_s + ": " + (validation @pruned_tree, @validation_set_for_pruning).to_s
+        index += 1
       end
-
-
     end
   end
 
@@ -638,4 +653,4 @@ hayes_dataset_properties ={
 }
 
 # main
-iris = ID3.new(baloon_dataset_properties)
+iris = ID3.new(breast_dataset_properties)
