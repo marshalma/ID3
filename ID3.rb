@@ -1,9 +1,12 @@
-require "CSV"
-require "thread"
-
+# Data stucture of decision tree, used by class ID3 for decistion tree construction.
+# @children[] stores sub-trees of the current node.
+# @conditions[] stores the conditions(attribute value for discrete attributes and
+#    attribute threshold for continuous attributes) to each branch.
+# @examples[] stores the data related to the current node.
+# @attr_index is the attribution index related to the current node.
+# @label is nil at non-leaf nodes and is labeld as the class name at leaf nodes.
 class Decision_Tree
   attr_accessor :children, :conditions, :examples, :attr_index, :label
-
   def initialize
     @children = []
     @conditions = []
@@ -13,33 +16,50 @@ class Decision_Tree
   end
 end
 
-
+# The class for ID3 algorithm and accessory functions
+# Note that the only API that should be reached from outside is the initialize method.
+# After initialize the class, it automatically:
+# 1. reads data from csv file
+# 2. substitute missing values if required
+# 3. shuffle the examples
+# 4. create validation set using 1/3 of total examples
+# 5. excecute 10-fold-cross-validation, during each iteration, tree pruning is excecuted
+# 6. print out trees(both pruned and unpruned) and compare the mean accuracy between using pruned tree and unpruned tree.
 class ID3
+  require "csv"
+  require "thread"
 
+  ### This function integates all procedures for a learning process
+  ### As a result, it's quite long.:(
+  ### Hope that the
   def initialize(dataset_properties)
     @dataset_properties = dataset_properties
 
     read_csv(dataset_properties[:dataset_path])
     substitute_missing_values
     find_all_attr_values
-    # @shuffled_data = @raw_data
+    ### @shuffled_data = @raw_data
     shuffle_examples dataset_properties[:dataset_name]
     create_validation_set
-    # disp_data
+    ### disp_data
 
-    # exit if there are too few examples.
+    # exit if there are too few examples for 10 fold cross validation
     if @shuffled_data.size < 100
       puts "not enough examples for 10-fold-cross-validation"
       exit
     end
 
     # 10-fold-cross-validation
-    results = []
-    results1 = []
+    results = [] # stores 10 accuracies using unpruned trees
+    results1 = [] # stores 10 accuracies using pruned trees
+    tree_sizes = [] # stores 10 sizes of unpruned trees
+    tree_sizes1 = [] # stores 10 sizes of pruned trees
     num_each_fold = @shuffled_data.size / 10
     (0..9).each do |i|
       puts "============================================================"
       puts "CROSS-VALIDATION " + (i+1).to_s + "/10..."
+
+      # create training set and test set for this iteration
       test_set = []
       training_set = []
       range = (i*num_each_fold..(i+1)*num_each_fold-1)
@@ -51,18 +71,31 @@ class ID3
         end
       end
 
+      # start ID3 training
       decision_tree_construction training_set
+
+      # print out the decision tree and accuracy of it upon test set
       puts "========================original tree======================="
       print_tree @tree
+      tree_sizes << (print_num_of_nodes @tree)
       results << validation(@tree,test_set)
+
+      # start decision tree pruning using reduced error method decribed in the textbook
       prune
+
+      # print out the pruned tree and accuracy of it upon test set
       puts "=========================pruned tree========================"
       print_tree @pruned_tree
+      tree_sizes1 << (print_num_of_nodes @tree)
       results1 << validation(@pruned_tree,test_set)
     end
 
-    puts "unpruned tree mean accuracies using 10 fold CR: " + results.to_s
-    puts "pruned tree mean accuracies using 10 fold CR: " + results1.to_s
+    # print out the arraies of accuracies and mean accuracies
+    puts "==========================RESULT================================"
+    puts "unpruned tree mean accuracies using 10 fold CR:\n" + results.to_s
+    puts "unpruned tree sizes:\n" + tree_sizes.to_s
+    puts "pruned tree mean accuracies using 10 fold CR:\n" + results1.to_s
+    puts "pruned tree sizes:\n" + tree_sizes1.to_s
     mean = 0
     mean1 = 0
     results.each do |v|
@@ -74,11 +107,10 @@ class ID3
     mean /= results.size.to_f
     mean1 /= results.size.to_f
     puts "unpruned mean accuracy: " + mean.to_s
-    puts "pruned accuracy: " + mean1.to_s
-    # proc dataset_properties
+    puts "pruned mean accuracy: " + mean1.to_s
   end
 
-
+  ### DEPRECATED!!! only for debug purpose!
   # def proc(dataset_properties)
   #   @dataset_properties = dataset_properties
   #
@@ -100,14 +132,10 @@ class ID3
   # end
 
 
-  # create validation set for pruning
-  def create_validation_set
-    total_size = @shuffled_data.size
-    validation_size = total_size/3
-    @validation_set_for_pruning = @shuffled_data.slice! 0,validation_size
-  end
-
-
+  ###==========================================================================================
+  ###DECISION TREE CONSTRUCTION SEGMENT
+  # construct the decision tree using ID3 algorithm,
+  # have support for continuous attributes using threshold dichotomy
   def decision_tree_construction data
     remaining_attr_index = []
     effective_attr_index.each do |i|
@@ -118,135 +146,7 @@ class ID3
     return 0
   end
 
-
-  def prune
-    tree = @tree
-    @pruned_tree = tree
-    puts "============================================================"
-    puts "start pruning..."
-    puts "step0: " + (validation @pruned_tree, @validation_set_for_pruning).to_s
-
-    index = 1
-    loop do |i|
-      reduced_error_hash = Hash.new
-      queue = Queue.new
-      trace = []
-      queue << [tree,trace]
-
-      while queue.size > 0
-        this_tree,q = queue.deq
-        tmp_tree = delete_node Marshal.load(Marshal.dump(tree)), q
-        reduced_error = validation(tmp_tree, @validation_set_for_pruning) - validation(tree, @validation_set_for_pruning)
-        reduced_error_hash[reduced_error] = q
-        if this_tree.children.size > 0
-          this_tree.children.each_with_index do |child,i|
-            queue << [this_tree.children[i],(q + [i])] if child.label == nil
-          end
-        end
-      end
-      # puts reduced_error_hash.keys.max
-      if reduced_error_hash.keys.max <= 0.0
-        return
-      else
-        trace_of_node_to_be_deleted = reduced_error_hash[reduced_error_hash.keys.max]
-        tree = delete_node tree,trace_of_node_to_be_deleted
-        @pruned_tree = tree
-        puts "step" + index.to_s + ": " + (validation @pruned_tree, @validation_set_for_pruning).to_s
-        index += 1
-      end
-    end
-  end
-
-
-  def validation(tree,test_set)
-    total_num = test_set.size
-    correct_num = 0
-    test_set.each do |item|
-      if correct_categorized? tree,item
-        correct_num += 1
-      end
-    end
-
-    return correct_num.to_f/total_num.to_f
-  end
-
-
-  def correct_categorized?(tree,test)
-    while tree.label == nil
-      index = tree.attr_index
-      if continuous_attr? index
-        if test[index].to_f <= tree.conditions[0].gsub(/[<=>]/,"").to_f
-          tree = tree.children[0]
-        else
-          tree = tree.children[1]
-        end
-      else
-        tree.conditions.each_with_index do |condition,i|
-          if test[index] == condition.gsub(/[<=>]/,"")
-            tree = tree.children[i]
-          end
-        end
-      end
-    end
-    return tree.label == test[target_attr_index]
-  end
-
-
-  #helper functions
-  def read_csv(file_path)
-    @raw_data = CSV.read(file_path)
-  end
-
-
-  # The method to achieve this function is that: find the most common value of this attr and substitue the symbol of missing value to it.
-  # However, there's two concerns about using this method
-  # 1. It doesn't work if the symbol of missing value is the dominant value
-  # 2. It doesn't work if the attr of the missing value is real type
-  def substitute_missing_values
-    if @dataset_properties[:missing_value] == false
-      return
-    end
-
-    (1..num_of_attr).each do |i|
-      @raw_data.each do |item|
-        if item[i-1] == @dataset_properties[:missing_symbol]
-          item[i-1] = most_common_value @raw_data,i-1
-        end
-      end
-    end
-
-  end
-
-
-  def shuffle_examples(save_path)
-    @shuffled_data = @raw_data.shuffle
-    IO.write(save_path.to_s + "_shuffled.txt", @shuffled_data.map(&:to_csv).join)
-  end
-
-
-  def disp_data
-    @shuffled_data.each do |item|
-      puts item.to_s
-    end
-  end
-
-
-  def find_all_attr_values
-    @attr_values = Hash.new
-    (@raw_data[0].size).times do |i|
-      @attr_values[i] = Array.new
-    end
-
-    @raw_data.each do |item|
-      item.each_with_index do |t,i|
-        if !@attr_values[i].include? t
-          @attr_values[i] << t
-        end
-      end
-    end
-  end
-
-
+  # ID3 algorithm, the idea is the same as the algorithm textbook, however this function has the support for continuous attribute
   def id3_proc(examples,remaining_attr_index)
     tree = Decision_Tree.new
     tree.examples = examples
@@ -276,7 +176,7 @@ class ID3
     tree
   end
 
-
+  # discrete attribute sub-procedure of ID3
   def id3_discrete_sub_proc(tree,examples,this_attr_index,remaining_attr_index)
     @attr_values[this_attr_index].each do |item|
       tree.conditions << "="+item
@@ -297,7 +197,7 @@ class ID3
     end
   end
 
-
+  # continuous attribute sub-procedure of ID3
   def id3_continuous_sub_proc(tree,examples,this_attr_index,remaining_attr_index)
     subset1, subset2 = divide_set_with_continuous_attr this_attr_index, examples
     tree.conditions << "<=" + (find_attr_max_value this_attr_index, subset1).to_s
@@ -312,57 +212,7 @@ class ID3
     tree.children << id3_proc(subset2,remaining_attr_index_new)
   end
 
-
-  def only_one_continuous_value(attr_index, examples)
-    table = Hash.new
-    examples.each do |item|
-      if !table.has_key? item[attr_index]
-        table[item[attr_index]] = 1
-      end
-    end
-
-    if table.keys.size == 1
-      return true
-    else
-      return false
-    end
-  end
-
-
-  def all_example_belong_to_one_class?(examples)
-    default_class = examples[0][target_attr_index]
-    examples.each do |item|
-      if item[target_attr_index] != default_class
-        return false
-      end
-    end
-    return true
-  end
-
-
-  def most_common_value(examples, attr_index=target_attr_index)
-    stat = Hash.new
-    examples.each do |item|
-      if !stat.has_key? item[attr_index]
-        stat[item[attr_index]] = 1
-      else
-        stat[item[attr_index]] += 1
-      end
-    end
-
-    max_value = stat.values[0];
-    max_class = stat.keys[0];
-    stat.each_pair do |key,value|
-      if value > max_value
-        max_value = value
-        max_class = key
-      end
-    end
-
-    max_class
-  end
-
-
+  # select the index of a attribute whose infomation gain is the highest
   def best_attr_index(examples,remaining_attr_index)
     info_gain = Hash.new
     remaining_attr_index.each do |item|
@@ -385,7 +235,7 @@ class ID3
     max_info_gain_index
   end
 
-
+  # given the index of a descrete attribute, calculates the infomation gain
   def discrete_info_gain(attr_index,examples)
     original_entropy = entropy examples
     original_size = examples.size
@@ -400,6 +250,7 @@ class ID3
   end
 
 
+  # given the index of a continuous attribute, calculates the infomation gain
   def continuous_info_gain(attr_index,examples)
     original_entropy = entropy examples
     original_size = examples.size
@@ -428,7 +279,7 @@ class ID3
     return original_entropy - min_weighted_entropy
   end
 
-
+  # calculates the entropy of target attribute in the exmaples
   def entropy(examples)
     class_count = Hash.new
     total_count = examples.size
@@ -448,6 +299,285 @@ class ID3
 
     entropy
   end
+  ###DECISION TREE CONSTRUCTION SEGMENT
+  ###==========================================================================================
+  ###==========================================================================================
+
+
+
+
+  ###==========================================================================================
+  ###==========================================================================================
+  ###TREE PRUNING SEGMENT
+  # tree pruning function, makes up a new instance variable @pruned_tree
+  # uses the reduced error method described in the textbook.
+  # goes through all nodes and see if the deletion of this node results in increse of accuracy.
+  # deletes the nodes whose deletion results in highest increase in accuracy
+  # the accuracy is evaluated using validation set.
+  def prune
+    tree = @tree
+    @pruned_tree = tree
+    puts "============================================================"
+    puts "start pruning..."
+    puts "step0: " + (validation @pruned_tree, @validation_set_for_pruning).to_s
+
+    index = 1
+    loop do
+      reduced_error_hash = Hash.new
+      queue = Queue.new
+      trace = []
+      queue << [tree,trace]
+
+      while queue.size > 0
+        this_tree,q = queue.deq
+        tmp_tree = delete_node Marshal.load(Marshal.dump(tree)), q
+        reduced_error = validation(tmp_tree, @validation_set_for_pruning) - validation(tree, @validation_set_for_pruning)
+        reduced_error_hash[reduced_error] = q
+        if this_tree.children.size > 0
+          this_tree.children.each_with_index do |child,i|
+            queue << [this_tree.children[i],(q + [i])] if child.label == nil
+          end
+        end
+      end
+      # puts reduced_error_hash.keys.max
+      if reduced_error_hash.keys.max <= 0.0
+        return
+      else
+        trace_of_node_to_be_deleted = reduced_error_hash[reduced_error_hash.keys.max]
+        tree = delete_node tree,trace_of_node_to_be_deleted
+        @pruned_tree = tree
+        # print the accuracy of the pruned tree of each pruning step
+        puts "step" + index.to_s + ": " + (validation @pruned_tree, @validation_set_for_pruning).to_s
+        index += 1
+      end
+    end
+  end
+
+  # evaluate the accuracy using (tree) upon (test_set)
+  def validation(tree,test_set)
+    total_num = test_set.size
+    correct_num = 0
+    test_set.each do |item|
+      if correct_categorized? tree,item
+        correct_num += 1
+      end
+    end
+
+    return correct_num.to_f/total_num.to_f
+  end
+
+  # see if an example is correctly classfied by the decision tree
+  def correct_categorized?(tree,test)
+    while tree.label == nil
+      index = tree.attr_index
+      if continuous_attr? index
+        if test[index].to_f <= tree.conditions[0].gsub(/[<=>]/,"").to_f
+          tree = tree.children[0]
+        else
+          tree = tree.children[1]
+        end
+      else
+        tree.conditions.each_with_index do |condition,i|
+          if test[index] == condition.gsub(/[<=>]/,"")
+            tree = tree.children[i]
+          end
+        end
+      end
+    end
+    return tree.label == test[target_attr_index]
+  end
+
+  def delete_node(tree,trace)
+    if trace.size == 0
+      return tree
+    end
+
+    root = tree
+    trace.each do |direction|
+      tree = tree.children[direction]
+    end
+    tree.label = most_common_value tree.examples
+    tree.conditions = []
+    tree.children = []
+    root
+  end
+  ###TREE PRUNING SEGMENT
+  ###==========================================================================================
+  ###==========================================================================================
+
+
+
+
+  ###==========================================================================================
+  ###==========================================================================================
+  ###PRINTING SEGMENT
+  def print_tree(tree)
+    level = 1
+    puts "root_node   " + str_distribution(tree.examples)
+    print_branch(tree,level)
+  end
+
+  def print_branch(tree,level)
+    if tree.label != nil
+      puts ".."*level + "class = " + tree.label + "  " + str_distribution(tree.examples)
+    end
+
+    tree.conditions.each_with_index do |item,i|
+      puts ".."*level + @dataset_properties[:attribute_names][tree.attr_index].to_s + item + "  [" + str_distribution(tree.children[i].examples) + "]"
+      print_branch(tree.children[i],level+1)
+    end
+  end
+
+  def str_distribution(examples)
+    class_count = Hash.new
+
+    @attr_values[target_attr_index].each do |item|
+      class_count[item] = 0
+    end
+
+    examples.each do |item|
+      if !class_count.has_key? item[target_attr_index]
+        class_count[item[target_attr_index]] = 1
+      else
+        class_count[item[target_attr_index]] += 1
+      end
+    end
+
+    class_count.to_s
+  end
+
+  def print_num_of_nodes(tree)
+    num = 1
+    stack = [tree]
+
+    while stack.size > 0
+      t = stack.pop
+      t.children.each do |item|
+        stack << item
+        num += 1
+      end
+    end
+
+    puts "num of nodes in tree: " + num.to_s
+    return num
+  end
+  ###PRINTING SEGMENT
+  ###==========================================================================================
+  ###==========================================================================================
+
+
+
+
+  ###==========================================================================================
+  ###==========================================================================================
+  ###HELPER FUNCTIONS
+  # reads csv data file
+  def read_csv(file_path)
+    @raw_data = CSV.read(file_path)
+  end
+
+  def continuous_attr?(index)
+    @dataset_properties[:real_attr_index].include? index
+  end
+
+  # create validation set for pruning
+  def create_validation_set
+    total_size = @shuffled_data.size
+    validation_size = total_size/3
+    @validation_set_for_pruning = @shuffled_data.slice! 0,validation_size
+  end
+
+  # experimental function for substitute missing values
+  # The method to achieve this function is that: find the most common value of this attr and substitue the symbol of missing value to it.
+  # However, there's two concerns about using this method
+  # 1. It doesn't work if the symbol of missing value is the dominant value
+  # 2. It doesn't work if the attr of the missing value is real type
+  def substitute_missing_values
+    if @dataset_properties[:missing_value] == false
+      return
+    end
+
+    (1..num_of_attr).each do |i|
+      @raw_data.each do |item|
+        if item[i-1] == @dataset_properties[:missing_symbol]
+          item[i-1] = most_common_value @raw_data,i-1
+        end
+      end
+    end
+  end
+
+  def shuffle_examples(save_path)
+    @shuffled_data = @raw_data.shuffle
+    # IO.write(save_path.to_s + "_shuffled.txt", @shuffled_data.map(&:to_csv).join)
+  end
+
+  def disp_data
+    @shuffled_data.each do |item|
+      puts item.to_s
+    end
+  end
+
+  def find_all_attr_values
+    @attr_values = Hash.new
+    (@raw_data[0].size).times do |i|
+      @attr_values[i] = Array.new
+    end
+
+    @raw_data.each do |item|
+      item.each_with_index do |t,i|
+        if !@attr_values[i].include? t
+          @attr_values[i] << t
+        end
+      end
+    end
+  end
+
+  def only_one_continuous_value(attr_index, examples)
+    table = Hash.new
+    examples.each do |item|
+      if !table.has_key? item[attr_index]
+        table[item[attr_index]] = 1
+      end
+    end
+
+    if table.keys.size == 1
+      return true
+    else
+      return false
+    end
+  end
+
+  def all_example_belong_to_one_class?(examples)
+    default_class = examples[0][target_attr_index]
+    examples.each do |item|
+      if item[target_attr_index] != default_class
+        return false
+      end
+    end
+    return true
+  end
+
+  def most_common_value(examples, attr_index=target_attr_index)
+    stat = Hash.new
+    examples.each do |item|
+      if !stat.has_key? item[attr_index]
+        stat[item[attr_index]] = 1
+      else
+        stat[item[attr_index]] += 1
+      end
+    end
+
+    max_value = stat.values[0];
+    max_class = stat.keys[0];
+    stat.each_pair do |key,value|
+      if value > max_value
+        max_value = value
+        max_class = key
+      end
+    end
+
+    max_class
+  end
 
   def find_attr_max_value(attr_index, examples)
     max = examples[0][attr_index]
@@ -459,7 +589,6 @@ class ID3
     max
   end
 
-
   def find_subset_with_attr_value(attr_index, attr_value, examples)
     subset = []
     examples.each do |item|
@@ -469,7 +598,6 @@ class ID3
     end
     subset
   end
-
 
   def divide_set_with_continuous_attr(attr_index, examples)
     original_entropy = entropy examples
@@ -499,71 +627,16 @@ class ID3
   end
 
 
-  # print results
-  def print_tree(tree)
-    level = 1
-    puts "root_node   " + str_distribution(tree.examples)
-    print_branch(tree,level)
-  end
-
-  def print_branch(tree,level)
-    if tree.label != nil
-      puts ".."*level + "class = " + tree.label + "  " + str_distribution(tree.examples)
-      return
-    end
-
-    tree.conditions.each_with_index do |item,i|
-      puts ".."*level + @dataset_properties[:attribute_names][tree.attr_index].to_s + item + "  [" + str_distribution(tree.children[i].examples) + "]"
-      print_branch(tree.children[i],level+1)
-    end
-  end
-
-  def str_distribution(examples)
-    class_count = Hash.new
-
-    @attr_values[target_attr_index].each do |item|
-      class_count[item] = 0
-    end
-
-    examples.each do |item|
-      if !class_count.has_key? item[target_attr_index]
-        class_count[item[target_attr_index]] = 1
-      else
-        class_count[item[target_attr_index]] += 1
-      end
-    end
-
-    class_count.to_s
-  end
 
 
-  def delete_node(tree,trace)
-    if trace.size == 0
-      return tree
-    end
 
-    root = tree
-    trace.each do |direction|
-      tree = tree.children[direction]
-    end
-    tree.label = most_common_value tree.examples
-    tree.conditions = []
-    tree.children = []
-    root
-  end
-
-
-  #getter
-  def continuous_attr?(index)
-    @dataset_properties[:real_attr_index].include? index
-  end
-
+  ### USEFUL GETTERS
   def target_attr_index
     @dataset_properties[:target_attr_index]
   end
 
   def num_of_attr
-    @raw_data[0].size - 1 # Normally, the last one is class, rather than attribute.
+    @raw_data[0].size - 1
   end
 
   def num_of_sample
@@ -575,82 +648,3 @@ class ID3
   end
 
 end
-
-# dataset properties
-baloon_dataset_properties ={
-:dataset_name => "baloon",
-:dataset_path => "Datasets/baloon/baloon.data.txt",
-:target_attr_index => 4,
-:effective_attr_index => (0..3),
-:real_attr_index => [],
-:missing_value => true,
-:missing_symbol => "?",
-:attribute_names => [:color, :size, :act, :age]
-}
-
-iris_dataset_properties ={
-:dataset_name => "iris",
-:dataset_path => "Datasets/iris/iris.data.txt",
-:target_attr_index => 4,
-:effective_attr_index => [0,1,2,3],
-:real_attr_index => [0,1,2,3],
-:missing_value => false,
-:attribute_names => [:sepal_length_in_cm, :sepal_width_in_cm, :petal_length_in_cm, :petal_width_in_cm]
-}
-
-car_dataset_properties ={
-:dataset_name => "car",
-:dataset_path => "Datasets/car/car.data.txt",
-:target_attr_index => 6,
-:effective_attr_index => (0..5),
-:real_attr_index => [],
-:missing_value => false,
-:attribute_names => [:buying, :maint, :doors, :persons, :lug_boot, :safety]
-}
-
-breast_dataset_properties ={
-:dataset_name => "breast",
-:dataset_path => "Datasets/breast_cancer/breast-cancer-wisconsin.data.txt",
-:target_attr_index => 10,
-:effective_attr_index => (0..9),
-:real_attr_index => [0,1,2,3,4,5,6,7,8,9],
-:missing_value => true,
-:missing_symbol => "?",
-:attribute_names => [:a_0, :a_1, :a_2, :a_3, :a_4, :a_5, :a_6, :a_7, :a_8, :a_9]
-}
-
-wine_dataset_properties ={
-:dataset_name => "wine",
-:dataset_path => "Datasets/wine/wine.data.txt",
-:target_attr_index => 0,
-:effective_attr_index => (1..13),
-:real_attr_index => [1,2,3,4,5,6,7,8,9,10,11,12,13],
-:missing_value => false,
-:missing_symbol => "?",
-:attribute_names => [:_,:alcohol, :malic_acid, :ash, :alcalinity_of_ash, :magnesium, :total_phenols, :flavanoids, :nonflavanoid_phenols, :proanthocyanins, :color_intensity, :hue, :OD280_315, :proline]
-}
-
-glass_dataset_properties ={
-:dataset_name => "glass",
-:dataset_path => "Datasets/glass/glass.data.txt",
-:target_attr_index => 10,
-:effective_attr_index => (1..9),
-:real_attr_index => (1..9),
-:missing_value => false,
-:missing_symbol => "?",
-:attribute_names => [:id, :RI, :Na, :Mg, :Al, :Si, :K, :Ca, :Ba, :Fe]
-}
-
-credit_dataset_properties ={
-:dataset_name => "credit",
-:dataset_path => "Datasets/credit/crx.data.txt",
-:target_attr_index => 15,
-:effective_attr_index => (0..14),
-:real_attr_index => [1,2,7,10,13,14],
-:missing_value => true,
-:missing_symbol => "?",
-:attribute_names => [:a_0,:a_1,:a_2,:a_3,:a_4,:a_5,:a_6,:a_7,:a_8,:a_9,:a_10,:a_11,:a_12,:a_13,:a_14]
-}
-
-# main
-iris = ID3.new(credit_dataset_properties)
